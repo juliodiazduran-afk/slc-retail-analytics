@@ -1,7 +1,7 @@
 // SLC Retail Analytics — service worker
 // Bump CACHE_VERSION on every publish so returning devices pick up the new
 // data snapshot instead of serving a stale cached index.html.
-const CACHE_VERSION = 'slc-analytics-20260917175607';
+const CACHE_VERSION = 'slc-analytics-20260917211750';
 const CORE_ASSETS = [
   './',
   './index.html',
