@@ -181,6 +181,11 @@ button, input{ font-family:inherit; }
 .acum-mini-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11.5px; padding:2px 0; }
 .acum-mini-lbl{ color:var(--text-muted); font-weight:700; font-size:10.5px; text-transform:uppercase; letter-spacing:0.3px; }
 
+/* Ritmo del mes en curso — proyección lineal vs presupuesto */
+.ritmo-card{ background:var(--surface-2); border:1px solid var(--grid-hairline); border-radius:14px; padding:10px 14px 8px; box-shadow:var(--shadow); }
+.store-ritmo-line{ margin-top:6px; }
+.store-ritmo-line .pill{ font-size:10.5px; padding:3px 9px; }
+
 /* Seller category mix */
 .seller-cats{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--grid-hairline); }
 .seller-cats .pill{ font-size:10.5px; padding:3px 8px; margin:3px 4px 0 0; font-weight:700; }
@@ -243,6 +248,7 @@ function el(tag, cls, html){
   if (html!=null) e.innerHTML = html;
   return e;
 }
+function clamp(v,lo,hi){ return v==null ? v : Math.max(lo,Math.min(hi,v)); }
 function paisNombre(p){ return PAIS_NOM[p]||p; }
 function fmtFecha(iso){
   var parts = iso.split('-');
@@ -330,6 +336,76 @@ function periodLabel(meses){
   var f = meses[0], l = meses[meses.length-1];
   return monthLabel(f.a,f.m,true)+'–'+monthLabel(l.a,l.m,true)+' '+String(l.a).slice(2);
 }
+function daysInMonth(a,m){ return new Date(a, m, 0).getDate(); }
+function computeRitmo(m){
+  if (!m || !(m.ppto>0)) return null;
+  var dim = daysInMonth(m.a, m.m);
+  var diasTr = Math.min(Math.max(META.cutoffDay||dim, 1), dim);
+  var diasRest = Math.max(dim - diasTr, 0);
+  var gap = m.ppto - m.usd;
+  var ritmoActual = diasTr>0 ? m.usd/diasTr : 0;
+  var metaDiaria = diasRest>0 ? Math.max(gap,0)/diasRest : null;
+  var proyeccion = ritmoActual * dim;
+  var proyeccionCumpl = proyeccion/m.ppto;
+  var paceCumpl = gap<=0 ? 1 : (metaDiaria>0 ? ritmoActual/metaDiaria : null);
+  return {dim:dim, diasTr:diasTr, diasRest:diasRest, gap:gap, ritmoActual:ritmoActual,
+          metaDiaria:metaDiaria, proyeccion:proyeccion, proyeccionCumpl:proyeccionCumpl, paceCumpl:paceCumpl};
+}
+function buildRitmoRows(mesRow){
+  var r = computeRitmo(mesRow);
+  if (!r) return null;
+  var rows = [];
+
+  var cumplHoy = mesRow.ppto>0 ? mesRow.usd/mesRow.ppto : null;
+  var stHoy = statusInfo(cumplHoy);
+  var row1 = el('div','acum-mini-row');
+  row1.innerHTML = '<span class="acum-mini-lbl">Vendido al día '+r.diasTr+' de '+r.dim+'</span>'+
+    '<span>'+fmtUSDCompact(mesRow.usd)+' de '+fmtUSDCompact(mesRow.ppto)+'</span>'+
+    '<span class="pill '+stHoy.cls+'">'+(stHoy.icon?stHoy.icon+' ':'')+fmtPct(cumplHoy)+'</span>';
+  rows.push(row1);
+
+  var row2 = el('div','acum-mini-row');
+  row2.innerHTML = '<span class="acum-mini-lbl">Ritmo diario actual</span>'+
+    '<span>'+fmtUSDCompact(r.ritmoActual)+'/día</span><span></span>';
+  rows.push(row2);
+
+  var row3 = el('div','acum-mini-row');
+  if (r.diasRest>0){
+    var paceSt = statusInfo(clamp(r.paceCumpl,0,2.5));
+    var metaTxt = r.gap<=0 ? 'Meta alcanzada' : fmtUSDCompact(r.metaDiaria)+'/día';
+    var paceTxt = r.gap<=0 ? '✓' : fmtPct(clamp(r.paceCumpl,0,2.5));
+    row3.innerHTML = '<span class="acum-mini-lbl">Necesario · '+r.diasRest+' día(s) rest.</span>'+
+      '<span>'+metaTxt+'</span>'+
+      '<span class="pill '+paceSt.cls+'">'+(paceSt.icon?paceSt.icon+' ':'')+paceTxt+'</span>';
+  } else {
+    row3.innerHTML = '<span class="acum-mini-lbl">Días restantes</span><span>0 (corte al día '+r.diasTr+')</span><span></span>';
+  }
+  rows.push(row3);
+
+  var row4 = el('div','acum-mini-row');
+  var projSt = statusInfo(clamp(r.proyeccionCumpl,0,3));
+  row4.innerHTML = '<span class="acum-mini-lbl">Proyección de cierre</span>'+
+    '<span>'+fmtUSDCompact(r.proyeccion)+'</span>'+
+    '<span class="pill '+projSt.cls+'">'+(projSt.icon?projSt.icon+' ':'')+fmtPct(clamp(r.proyeccionCumpl,0,3))+'</span>';
+  rows.push(row4);
+
+  return rows;
+}
+function buildRitmo(){
+  var scope = STATE.scope;
+  var mesRow = scope.totales[scope.totales.length-1];
+  var rows = buildRitmoRows(mesRow);
+  if (!rows) return null;
+  var sec = el('div','section');
+  var head = el('div','section-head');
+  head.appendChild(el('div','section-title','Ritmo del mes en curso'));
+  head.appendChild(el('div','section-note', monthLabel(mesRow.a,mesRow.m,false)+' · proyección lineal'));
+  sec.appendChild(head);
+  var card = el('div','ritmo-card');
+  rows.forEach(function(row){ card.appendChild(row); });
+  sec.appendChild(card);
+  return sec;
+}
 
 // ---------------- app shell ----------------
 function renderApp(){
@@ -357,6 +433,8 @@ function renderApp(){
   content.appendChild(buildMonthChips());
   content.appendChild(buildKpis());
   content.appendChild(buildAcumulado());
+  var ritmoSec = buildRitmo();
+  if (ritmoSec) content.appendChild(ritmoSec);
   if (scope.porPais) content.appendChild(buildPorPais());
   if (scope.porSupervisor) content.appendChild(buildPorSupervisor());
   content.appendChild(buildTrend());
@@ -701,10 +779,32 @@ function buildStores(){
     nums.innerHTML = '<span>'+fmtUSDCompact(item.m.usd)+'</span><span>Meta: '+(item.m.ppto>0?fmtUSDCompact(item.m.ppto):'s/d')+'</span>'+yoyTxt;
     card.appendChild(nums);
 
+    if (isPartialMonth(item.m.a, item.m.m)){
+      var rQuick = computeRitmo(item.m);
+      if (rQuick && rQuick.diasRest>0){
+        var rLine = el('div','store-ritmo-line');
+        if (rQuick.gap<=0){
+          rLine.innerHTML = '<span class="pill good">✓ Meta alcanzada</span>';
+        } else {
+          var paceStQuick = statusInfo(clamp(rQuick.paceCumpl,0,2.5));
+          rLine.innerHTML = '<span class="pill '+paceStQuick.cls+'">'+(paceStQuick.icon?paceStQuick.icon+' ':'')+'Necesita '+fmtUSDCompact(rQuick.metaDiaria)+'/día</span>';
+        }
+        card.appendChild(rLine);
+      }
+    }
+
     var storeKey = item.t.tienda+'~~'+item.t.pais;
     var detail = el('div','store-detail'+(STATE.openStore===storeKey?' open':''));
     detail.appendChild(buildStoreSpark(item.t));
     detail.appendChild(buildAcumuladoMini(sumPeriod(item.t.meses)));
+    var mesActualStore = item.t.meses[item.t.meses.length-1];
+    var ritmoRowsStore = buildRitmoRows(mesActualStore);
+    if (ritmoRowsStore){
+      var ritmoWrap = el('div','acum-mini');
+      ritmoWrap.appendChild(el('div','acum-mini-lbl','Ritmo — '+monthLabel(mesActualStore.a,mesActualStore.m,true)));
+      ritmoRowsStore.forEach(function(row){ ritmoWrap.appendChild(row); });
+      detail.appendChild(ritmoWrap);
+    }
     card.appendChild(detail);
 
     (function(storeKey){
