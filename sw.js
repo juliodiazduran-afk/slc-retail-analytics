@@ -1,14 +1,14 @@
 // SLC Retail Analytics — service worker
 // Bump CACHE_VERSION on every publish so returning devices pick up the new
 // data snapshot instead of serving a stale cached index.html.
-const CACHE_VERSION = 'slc-analytics-20260917161037';
+const CACHE_VERSION = 'slc-analytics-20260917164439';
 const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-maskable-512.png',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-maskable-512.png',
 ];
 
 self.addEventListener('install', (event) => {
